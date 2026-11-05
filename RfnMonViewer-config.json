@@ -1,0 +1,57 @@
+{
+    "x_len" : 1800,
+    "timer_tick" : 1,
+    "dir" : "data/",
+
+    "data_lines" : {"0"  : ["b", 1, "b", "Ucav"],
+                    "1"  : ["m", 1, "b", "Ifid"],
+                    "2"  : ["b", 1, "b", "UmodOut"],
+
+                    "3"  : ["b", 1, "b", "PaPhaseSin"],
+                    "4"  : ["b", 1, "b", "PaPhaseCos"],
+                    "5"  : ["b", 1, "b", "PaPhaseErr"],
+                    "6"  : ["b", 1, "b", "PaOut"],
+                    "7"  : ["y", 1, "b", "PhaseRef"],
+
+                    "8"  : ["g", 1, "b", "Upiezo"], 
+                    "9"  : ["g", 1, "b", "PhaseCav"],
+                    "10" : ["g", 1, "b", "Vac"], 
+                    
+                    "11" : ["b", 1, "b", "CurPos1"], 
+                    "12" : ["m", 1, "b", "CurPos2"],
+                    "13" : ["y", 1, "b", "CurPos3"], 
+                    "14" : ["g", 1, "b", "CurPos4"], 
+
+                    "15" : ["b", 1, "b", "SspaPforw"],
+                    "16" : ["b", 1, "b", "SspaPrefl"],
+                    "17" : ["b", 1, "b", "SspaPa1"],
+                    "18" : ["m", 1, "b", "SspaPa2"],
+                    "19" : ["y", 1, "b", "SspaPa3"],
+                    "20" : ["g", 1, "b", "SspaPa4"],
+                    "21" : ["b", 1, "b", "SspaPdc1"], 
+                    "22" : ["m", 1, "b", "SspaPdc2"],
+                    "23" : ["y", 1, "b", "SspaPdc3"],
+                    "24" : ["g", 1, "b", "SspaPdc4"]},
+
+    "plots" : [["Cavity", [-2, 40], [0, 1, 15, 16]],
+               ["Control System", [-2, 40],  [6, 2]],
+               ["Tuners", [-2, 40],  [8, 11, 12, 13, 14]],
+               ["SSPA", [-2, 40],  [17, 18, 19, 20, 21, 22, 23, 24]]],
+
+    "devices" : {"rf2-1e1" : ["rf2/1e1/mod", "rf2/1e1/ctrl", "rf2/1e1/cav", "rf2/1e1/tuner", "rf2/1e1/sspa"],
+                 "rf2-2e1" : ["rf2/2e1/mod", "rf2/2e1/ctrl", "rf2/2e1/cav", "rf2/2e1/tuner", "rf2/2e1/sspa"],
+                 "rf2-3e1" : ["rf2/3e1/mod", "rf2/3e1/ctrl", "rf2/3e1/cav", "rf2/3e1/tuner", "rf2/3e1/sspa"],
+                 "rf2-4e1" : ["rf2/4e1/mod", "rf2/4e1/ctrl", "rf2/4e1/cav", "rf2/4e1/tuner", "rf2/4e1/sspa"],
+                 "rf2-1e2" : ["rf2/1e2/mod", "rf2/1e2/ctrl", "rf2/1e2/cav", "rf2/1e2/tuner", "rf2/1e2/sspa"],
+                 "rf2-2e2" : ["rf2/2e2/mod", "rf2/2e2/ctrl", "rf2/2e2/cav", "rf2/2e2/tuner", "rf2/2e2/sspa"],
+                 "rf2-3e2" : ["rf2/3e2/mod", "rf2/3e2/ctrl", "rf2/3e2/cav", "rf2/3e2/tuner", "rf2/3e2/sspa"],
+                 "rf2-4e2" : ["rf2/4e2/mod", "rf2/4e2/ctrl", "rf2/4e2/cav", "rf2/4e2/tuner", "rf2/4e2/sspa"]},
+
+    "tango_attr" : {"mod"    : ["Ucav", "Ifid", "UmodOut"],
+                    "ctrl"   : ["PaPhaseSin", "PaPhaseCos", "PaPhaseErr", "PaOut", "PhaseRef"],
+                    "cav"    : ["Upiezo", "PhaseCav", "Vac"],
+                    "tuner0" : ["CurPos1", "CurPos2", "CurPos3", "CurPos4"],
+                    "sspa"   : ["SspaPforw", "SspaPrefl",
+                                "SspaPa1", "SspaPa2", "SspaPa3", "SspaPa4",
+                                "SspaPdc1", "SspaPdc2", "SspaPdc3", "SspaPdc4"]}
+}

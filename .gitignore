@@ -1,0 +1,5 @@
+__pycache__/
+venv/
+data/
+*-lines.json
+test-config.json
