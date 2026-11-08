@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timedelta
 import os
 import json
+import tango
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QGroupBox, QGridLayout, \
@@ -263,10 +264,19 @@ class RfnMonWindow(QMainWindow):
 
 
     def timerEvent(self):
-        # poll only active resonators; inactive ones keep empty buffers
+        # poll only active resonators; inactive ones keep empty buffers.
+        # A failure of one resonator must not stop the others.
+        lost_now = []   # list of (resonator name, short reason) lost in this tick
         for r, data in enumerate(self.datas):
-            if self.active[r]:
+            if not self.active[r]:
+                continue
+            try:
                 data.get_data()
+            except Exception as e:
+                self.drop_partial_sample(data)
+                self.active[r] = False
+                lost_now.append((self.res_names[r], self.short_reason(self.error_text(e))))
+
         all_dat = [[data.xt, data.y] for data in self.datas]
         for i in range(self.plot_qty):
             self.plot_graph(i, all_dat)
@@ -274,6 +284,71 @@ class RfnMonWindow(QMainWindow):
         for r, data in enumerate(self.datas):
             if self.active[r]:
                 data.add_to_file_last(self.f_names[r])
+
+        if lost_now:
+            self.on_resonators_lost(lost_now)
+
+
+    def drop_partial_sample(self, data):
+        """
+        Undo the half-written sample after get_data() failed in the middle.
+
+        get_data() appends the time to xt first and then appends values to y
+        one by one (y[0], y[1], ...). data.dump holds [time, values read so far],
+        so len(dump) - 1 is how many y lists got a new value before the failure.
+        """
+        n_read = max(len(data.dump) - 1, 0)
+        if data.xt:
+            data.xt.pop()
+        for i in range(min(n_read, len(data.y))):
+            if data.y[i]:
+                data.y[i].pop()
+        # when the buffer was full, the lists that were not read still keep one
+        # older point at the front: cut every list to the length of xt
+        n = len(data.xt)
+        for i in range(len(data.y)):
+            if len(data.y[i]) > n:
+                data.y[i] = data.y[i][len(data.y[i]) - n:]
+
+
+    def error_text(self, e):
+        """Readable text of an exception; for Tango errors join the descriptions"""
+        if isinstance(e, tango.DevFailed):
+            return "\n".join(err.desc for err in e.args)
+        return f"{type(e).__name__}: {e}"
+
+
+    def on_resonators_lost(self, lost_now):
+        """Resonators stopped answering during monitoring: update label, warn once"""
+        n_ok = sum(self.active)
+        n_all = len(self.res_names)
+        lost_text = "\n".join(f"{name}: {reason}" for name, reason in lost_now)
+
+        if n_ok == 0:
+            # nobody left to poll: stop monitoring
+            self.timer.stop()
+            self.state = RfnMonState.Idle
+            self.lbl_cav_info.setText("Резонаторы: ---")
+            self.statusBar().showMessage("Monitor stop: нет доступных резонаторов")
+            self.show_warning(f"Потеряна связь со всеми резонаторами, мониторинг остановлен:"
+                              f"\n\n{lost_text}")
+            return
+
+        self.lbl_cav_info.setText(f"Резонаторы: {n_ok} из {n_all}")
+        self.show_warning(f"Потеряна связь с резонаторами, они больше не опрашиваются "
+                          f"(до перезапуска Mon: Start):\n\n{lost_text}")
+
+
+    def show_warning(self, text):
+        """Non-modal warning: the timer keeps working while the window is open"""
+        msg_box = QMessageBox(self)
+        msg_box.setIcon(QMessageBox.Warning)
+        msg_box.setWindowTitle("Warning")
+        msg_box.setText(text)
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        msg_box.setAttribute(Qt.WA_DeleteOnClose)
+        msg_box.setModal(False)
+        msg_box.show()
 
 
     def plot_graph(self, index, all_dat):

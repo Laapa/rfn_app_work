@@ -17,6 +17,10 @@ import json
 import tango
 
 
+# timeout for ping in connect(), milliseconds
+PING_TIMEOUT_MS = 1000
+
+
 class TangoConnError(Exception):
     pass
 
@@ -57,7 +61,12 @@ class RfnMonData():
         try:
             for path in devices_path:
                 tango_ds = tango.DeviceProxy(path)
+                # short timeout only for ping, so an unreachable host does not
+                # freeze the window; reads keep the normal Tango timeout
+                normal_timeout = tango_ds.get_timeout_millis()
+                tango_ds.set_timeout_millis(PING_TIMEOUT_MS)
                 tango_ds.ping()
+                tango_ds.set_timeout_millis(normal_timeout)
                 self.tango_ds.append(tango_ds)
         # except tango.ConnectionFailed as df:
         #     raise TangoConnError("Unable connect to tango: {0}".format(path))
