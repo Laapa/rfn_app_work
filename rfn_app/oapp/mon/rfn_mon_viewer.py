@@ -49,6 +49,8 @@ class RfnMonWindow(QMainWindow):
         self.f_name_templ_ds = ""
         self.f_name_templ_date = "%Y-%m-%d_%H-%M-%S.dat"
         self.f_name = ""
+        self.f_names = []   # file per resonator, None for inactive ones
+        self.active = []    # active[r] = True if resonator r is polled
         self.statusMsg = "Start: "
         self.state = RfnMonState()
         self.state = RfnMonState.Idle
@@ -261,13 +263,17 @@ class RfnMonWindow(QMainWindow):
 
 
     def timerEvent(self):
-        # читаем все резонаторы; get_data() каждого возвращает [время, ряды]
-        all_dat = [data.get_data() for data in self.datas]
+        # poll only active resonators; inactive ones keep empty buffers
+        for r, data in enumerate(self.datas):
+            if self.active[r]:
+                data.get_data()
+        all_dat = [[data.xt, data.y] for data in self.datas]
         for i in range(self.plot_qty):
             self.plot_graph(i, all_dat)
         self.updateStatusBar()
-        for data, f_name in zip(self.datas, self.f_names):
-            data.add_to_file_last(f_name)
+        for r, data in enumerate(self.datas):
+            if self.active[r]:
+                data.add_to_file_last(self.f_names[r])
 
 
     def plot_graph(self, index, all_dat):
@@ -277,7 +283,8 @@ class RfnMonWindow(QMainWindow):
         index   - какой график отрисовывать
         all_dat - список [время, ряды] по каждому резонатору
         """
-        if (len(all_dat[0][0]) >= self.x_len):
+        # resonator 0 may be unavailable, so look at the longest time axis
+        if max(len(dat[0]) for dat in all_dat) >= self.x_len:
             self.guiplots[index].enableAutoRange(axis='x', enable=True)
 
         for curve, (r, n_dat) in zip(self.dlines[index], self.curve_keys[index]):
@@ -306,16 +313,24 @@ class RfnMonWindow(QMainWindow):
 
     def mon_start(self):
         if (self.state == RfnMonState.Idle):
-            # подключаемся ко всем резонаторам по очереди
+            # try every resonator; a failed one is remembered, not fatal
+            self.active = []
+            failed = []     # list of (resonator name, short reason)
             for name, data in zip(self.res_names, self.datas):
                 try:
                     data.connect(self.devices[name])
-                except TangoConnError as e:
-                    self.show_error_window(f"Tango error ({name})", str(e))
-                    return
-                except TangoErr as e:
-                    self.show_error_window(f"Tango error ({name})", str(e))
-                    return
+                    self.active.append(True)
+                except (TangoConnError, TangoErr) as e:
+                    self.active.append(False)
+                    failed.append((name, self.short_reason(str(e))))
+
+            n_ok = sum(self.active)
+            n_all = len(self.res_names)
+            failed_text = "\n".join(f"{name}: {reason}" for name, reason in failed)
+            if n_ok == 0:
+                self.show_error_window("Нет доступных резонаторов, мониторинг не запущен",
+                                       failed_text)
+                return
 
             for data in self.datas:
                 data.rst_data()
@@ -325,18 +340,44 @@ class RfnMonWindow(QMainWindow):
             self.start = datetime.now()
             start_str = self.start.strftime("%Y-%m-%d %H:%M:%S")
 
-            # у каждого резонатора свой файл
-            self.f_names = [self.get_full_path(name) for name in self.res_names]
-            for name, data, f_name in zip(self.res_names, self.datas, self.f_names):
-                data.write_file_head(self.start, f_name, name)
+            # each active resonator has its own file; inactive ones get None
+            self.f_names = []
+            for r, (name, data) in enumerate(zip(self.res_names, self.datas)):
+                if self.active[r]:
+                    f_name = self.get_full_path(name)
+                    data.write_file_head(self.start, f_name, name)
+                    self.f_names.append(f_name)
+                else:
+                    self.f_names.append(None)
 
-            self.lbl_cav_info.setText("Резонаторы: все")
+            self.lbl_cav_info.setText(f"Резонаторы: {n_ok} из {n_all}")
             self.statusMsg = "Start at {0}".format(start_str, 0)
             self.statusBar().showMessage(self.statusMsg)
             self.timer.start(int(self.timer_tick * 1000))
             self.state = RfnMonState.Mon
+
+            # one window for all unavailable resonators, after the timer is started
+            if failed:
+                self.show_info_window(f"Недоступны резонаторы ({n_all - n_ok} из {n_all}), "
+                                      f"мониторинг идёт без них:\n\n{failed_text}")
         else:
             self.show_info_window("Мониторинг уже запущен")
+
+
+    def short_reason(self, msg):
+        """Short reason from a Tango error text: prefer the line naming the device
+        ("Failed to connect to device rf2/1e1/mod"), otherwise the first line"""
+        lines = [line.strip() for line in msg.splitlines() if line.strip()]
+        if not lines:
+            return "нет ответа"
+        reason = lines[0]
+        for line in lines:
+            if "device" in line.lower():
+                reason = line
+                break
+        if len(reason) > 120:
+            reason = reason[:117] + "..."
+        return reason
 
 
     def mon_stop(self):
