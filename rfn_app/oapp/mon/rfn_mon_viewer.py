@@ -4,8 +4,8 @@ import pyqtgraph as pg
 import numpy as np
 import time
 from datetime import datetime, timedelta
-import os
 import json
+import tango
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QGroupBox, QGridLayout, \
@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import QDialog, QVBoxLayout, QGroupBox, QGridLayout, \
     QFileDialog, QMessageBox
 from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtCore import QTimer, QDateTime
-from PyQt5.QtWidgets import QApplication, QWidget, QMessageBox, QVBoxLayout, QPushButton
+from PyQt5.QtWidgets import QWidget, QPushButton
 
 from rfn_app.oapp.mon.rfn_mon_data import RfnMonData, TangoConnError, TangoErr
 from rfn_app.oapp.mon.rfn_mon_plot_dialog import PlotLinesDialog
@@ -43,14 +43,13 @@ class RfnMonWindow(QMainWindow):
         self.dlines = []
         self.curve_keys = []        
         self.file_data = None
-        self.devices =None
-        self.divices_attr = None
-        
-        self.f_name_templ_ds = ""
+        self.devices = None
+        self.devices_attr = None
+
         self.f_name_templ_date = "%Y-%m-%d_%H-%M-%S.dat"
-        self.f_name = ""
+        self.f_names = []   # file per resonator, None for inactive ones
+        self.active = []    # active[r] = True if resonator r is polled
         self.statusMsg = "Start: "
-        self.state = RfnMonState()
         self.state = RfnMonState.Idle
 
         self.read_cfg(cfg_name_json)
@@ -89,7 +88,7 @@ class RfnMonWindow(QMainWindow):
         gb_plots.setLayout(vbox_plots)
         self.rebuild_lines()
 
-        # создаем строку с указанием резонатора, кнопкой подключения и combobox для выбора резонатора
+        # top row: number of resonators, Mon: Start / Mon: Stop, read from file
         self.lbl_cav_info = QLabel("Резонаторы: ---")
         self.lbl_cav_info.setStyleSheet('''font: 14pt "MS Shell Dlg 2"''')
 
@@ -99,7 +98,7 @@ class RfnMonWindow(QMainWindow):
         self.btn_mon_stop = QPushButton("Mon: Stop")
         self.btn_mon_stop.clicked.connect(self.mon_stop)
 
-        self.btn_read_file = QPushButton("Read form file")
+        self.btn_read_file = QPushButton("Read from file")
         self.btn_read_file.clicked.connect(self.read_file)
 
         hbox_sys = QHBoxLayout()
@@ -231,6 +230,11 @@ class RfnMonWindow(QMainWindow):
             self.dlines[i] = idlines
             self.curve_keys[i] = keys
 
+            # legend: up to 4 entries per column, as at start
+            legend = self.guiplots[i].getPlotItem().legend
+            if legend is not None and hasattr(legend, "setColumnCount"):
+                legend.setColumnCount(max(1, (len(idlines) - 1) // 4 + 1))
+
 
     def edit_plot_lines(self, p):
         """Настройка линий одного графика: p - номер графика"""
@@ -261,13 +265,91 @@ class RfnMonWindow(QMainWindow):
 
 
     def timerEvent(self):
-        # читаем все резонаторы; get_data() каждого возвращает [время, ряды]
-        all_dat = [data.get_data() for data in self.datas]
+        # poll only active resonators; inactive ones keep empty buffers.
+        # A failure of one resonator must not stop the others.
+        lost_now = []   # list of (resonator name, short reason) lost in this tick
+        for r, data in enumerate(self.datas):
+            if not self.active[r]:
+                continue
+            try:
+                data.get_data()
+            except Exception as e:
+                self.drop_partial_sample(data)
+                self.active[r] = False
+                lost_now.append((self.res_names[r], self.short_reason(self.error_text(e))))
+
+        all_dat = [[data.xt, data.y] for data in self.datas]
         for i in range(self.plot_qty):
             self.plot_graph(i, all_dat)
         self.updateStatusBar()
-        for data, f_name in zip(self.datas, self.f_names):
-            data.add_to_file_last(f_name)
+        for r, data in enumerate(self.datas):
+            if self.active[r]:
+                data.add_to_file_last(self.f_names[r])
+
+        if lost_now:
+            self.on_resonators_lost(lost_now)
+
+
+    def drop_partial_sample(self, data):
+        """
+        Undo the half-written sample after get_data() failed in the middle.
+
+        get_data() appends the time to xt first and then appends values to y
+        one by one (y[0], y[1], ...). data.dump holds [time, values read so far],
+        so len(dump) - 1 is how many y lists got a new value before the failure.
+        """
+        n_read = max(len(data.dump) - 1, 0)
+        if data.xt:
+            data.xt.pop()
+        for i in range(min(n_read, len(data.y))):
+            if data.y[i]:
+                data.y[i].pop()
+        # when the buffer was full, the lists that were not read still keep one
+        # older point at the front: cut every list to the length of xt
+        n = len(data.xt)
+        for i in range(len(data.y)):
+            if len(data.y[i]) > n:
+                data.y[i] = data.y[i][len(data.y[i]) - n:]
+
+
+    def error_text(self, e):
+        """Readable text of an exception; for Tango errors join the descriptions"""
+        if isinstance(e, tango.DevFailed):
+            return "\n".join(err.desc for err in e.args)
+        return f"{type(e).__name__}: {e}"
+
+
+    def on_resonators_lost(self, lost_now):
+        """Resonators stopped answering during monitoring: update label, warn once"""
+        n_ok = sum(self.active)
+        n_all = len(self.res_names)
+        lost_text = "\n".join(f"{name}: {reason}" for name, reason in lost_now)
+
+        if n_ok == 0:
+            # nobody left to poll: stop monitoring
+            self.timer.stop()
+            self.state = RfnMonState.Idle
+            self.lbl_cav_info.setText("Резонаторы: ---")
+            self.statusBar().showMessage("Monitor stop: нет доступных резонаторов")
+            self.show_warning(f"Потеряна связь со всеми резонаторами, мониторинг остановлен:"
+                              f"\n\n{lost_text}")
+            return
+
+        self.lbl_cav_info.setText(f"Резонаторы: {n_ok} из {n_all}")
+        self.show_warning(f"Потеряна связь с резонаторами, они больше не опрашиваются "
+                          f"(до перезапуска Mon: Start):\n\n{lost_text}")
+
+
+    def show_warning(self, text):
+        """Non-modal warning: the timer keeps working while the window is open"""
+        msg_box = QMessageBox(self)
+        msg_box.setIcon(QMessageBox.Warning)
+        msg_box.setWindowTitle("Warning")
+        msg_box.setText(text)
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        msg_box.setAttribute(Qt.WA_DeleteOnClose)
+        msg_box.setModal(False)
+        msg_box.show()
 
 
     def plot_graph(self, index, all_dat):
@@ -277,7 +359,8 @@ class RfnMonWindow(QMainWindow):
         index   - какой график отрисовывать
         all_dat - список [время, ряды] по каждому резонатору
         """
-        if (len(all_dat[0][0]) >= self.x_len):
+        # resonator 0 may be unavailable, so look at the longest time axis
+        if max(len(dat[0]) for dat in all_dat) >= self.x_len:
             self.guiplots[index].enableAutoRange(axis='x', enable=True)
 
         for curve, (r, n_dat) in zip(self.dlines[index], self.curve_keys[index]):
@@ -306,16 +389,24 @@ class RfnMonWindow(QMainWindow):
 
     def mon_start(self):
         if (self.state == RfnMonState.Idle):
-            # подключаемся ко всем резонаторам по очереди
+            # try every resonator; a failed one is remembered, not fatal
+            self.active = []
+            failed = []     # list of (resonator name, short reason)
             for name, data in zip(self.res_names, self.datas):
                 try:
                     data.connect(self.devices[name])
-                except TangoConnError as e:
-                    self.show_error_window(f"Tango error ({name})", str(e))
-                    return
-                except TangoErr as e:
-                    self.show_error_window(f"Tango error ({name})", str(e))
-                    return
+                    self.active.append(True)
+                except (TangoConnError, TangoErr) as e:
+                    self.active.append(False)
+                    failed.append((name, self.short_reason(str(e))))
+
+            n_ok = sum(self.active)
+            n_all = len(self.res_names)
+            failed_text = "\n".join(f"{name}: {reason}" for name, reason in failed)
+            if n_ok == 0:
+                self.show_error_window("Нет доступных резонаторов, мониторинг не запущен",
+                                       failed_text)
+                return
 
             for data in self.datas:
                 data.rst_data()
@@ -325,18 +416,44 @@ class RfnMonWindow(QMainWindow):
             self.start = datetime.now()
             start_str = self.start.strftime("%Y-%m-%d %H:%M:%S")
 
-            # у каждого резонатора свой файл
-            self.f_names = [self.get_full_path(name) for name in self.res_names]
-            for name, data, f_name in zip(self.res_names, self.datas, self.f_names):
-                data.write_file_head(self.start, f_name, name)
+            # each active resonator has its own file; inactive ones get None
+            self.f_names = []
+            for r, (name, data) in enumerate(zip(self.res_names, self.datas)):
+                if self.active[r]:
+                    f_name = self.get_full_path(name)
+                    data.write_file_head(self.start, f_name, name)
+                    self.f_names.append(f_name)
+                else:
+                    self.f_names.append(None)
 
-            self.lbl_cav_info.setText("Резонаторы: все")
+            self.lbl_cav_info.setText(f"Резонаторы: {n_ok} из {n_all}")
             self.statusMsg = "Start at {0}".format(start_str, 0)
             self.statusBar().showMessage(self.statusMsg)
             self.timer.start(int(self.timer_tick * 1000))
             self.state = RfnMonState.Mon
+
+            # one window for all unavailable resonators, after the timer is started
+            if failed:
+                self.show_info_window(f"Недоступны резонаторы ({n_all - n_ok} из {n_all}), "
+                                      f"мониторинг идёт без них:\n\n{failed_text}")
         else:
             self.show_info_window("Мониторинг уже запущен")
+
+
+    def short_reason(self, msg):
+        """Short reason from a Tango error text: prefer the line naming the device
+        ("Failed to connect to device rf2/1e1/mod"), otherwise the first line"""
+        lines = [line.strip() for line in msg.splitlines() if line.strip()]
+        if not lines:
+            return "нет ответа"
+        reason = lines[0]
+        for line in lines:
+            if "device" in line.lower():
+                reason = line
+                break
+        if len(reason) > 120:
+            reason = reason[:117] + "..."
+        return reason
 
 
     def mon_stop(self):
@@ -358,36 +475,60 @@ class RfnMonWindow(QMainWindow):
 
         return f_dir + f"{res_name}_" + self.start.strftime(self.f_name_templ_date)
 
-        self.f_name = f_dir + f"{self.f_name_templ_ds}_" + self.start.strftime(self.f_name_templ_date)
-
     
     def read_file(self):
         if (self.state == RfnMonState.Idle):
-            fname = QFileDialog.getOpenFileName(self, 'Open file', self.f_dir)[0]
-            if fname == "":
+            # several files can be selected: one per resonator
+            fnames = QFileDialog.getOpenFileNames(self, 'Open files', self.f_dir,
+                                                  "Data files (*.dat);;All files (*)")[0]
+            if not fnames:
                 return
 
-            # резонатор определяем по началу имени файла: "rf2-1e1_2026-10-30_11-07-15.dat"
-            res_name = os.path.basename(fname).split("_")[0]
-            if res_name not in self.res_names:
-                self.show_info_window("Не удалось определить резонатор по имени файла")
+            n_lines = len(self.data_lines_cfg)
+            empty = [[], [[] for _ in range(n_lines)]]
+            file_data = [empty for _ in self.res_names]
+            loaded = {}     # resonator name -> file name
+            problems = []   # list of "file: reason"
+            for fname in fnames:
+                base = os.path.basename(fname)
+                # the resonator is the beginning of the file name: "rf2-1e1_2026-10-30_11-07-15.dat"
+                res_name = base.split("_")[0]
+                if res_name not in self.res_names:
+                    problems.append(f"{base}: не удалось определить резонатор по имени файла")
+                    continue
+                try:
+                    # reading does not depend on the resonator, any data object will do
+                    xt, y = self.datas[0].read_from_file(fname)
+                except (OSError, ValueError, IndexError) as e:
+                    problems.append(f"{base}: не удалось прочитать ({type(e).__name__}: {e})")
+                    continue
+                # a file with fewer columns: the missing lines stay empty
+                while len(y) < n_lines:
+                    y.append([])
+                if res_name in loaded:
+                    problems.append(f"{base}: для {res_name} уже выбран "
+                                    f"{os.path.basename(loaded[res_name])}, берём этот")
+                file_data[self.res_names.index(res_name)] = [xt, y]
+                loaded[res_name] = fname
+
+            if not loaded:
+                self.show_info_window("Ни один файл не прочитан:\n\n" + "\n".join(problems))
                 return
 
-            # чтение файла от резонатора не зависит, подойдёт любой объект данных
-            data_r = self.datas[0].read_from_file(fname)
-
-            # данные есть только у резонатора этого файла, у остальных пусто
-            r = self.res_names.index(res_name)
-            empty = [[], [[] for _ in self.data_lines_cfg]]
-            self.file_data = [data_r if k == r else empty for k in range(len(self.res_names))]
-
+            self.file_data = file_data
             self.redraw_all()
             for i in range(self.plot_qty):
                 self.guiplots[i].enableAutoRange(axis='x', enable=True)
 
-            self.statusBar().showMessage("Read from file {}".format(fname))
+            self.lbl_cav_info.setText(f"Из файлов: {len(loaded)} из {len(self.res_names)}")
+            if len(loaded) == 1:
+                self.statusBar().showMessage("Read from file {}".format(list(loaded.values())[0]))
+            else:
+                self.statusBar().showMessage("Read from {} files".format(len(loaded)))
+            if problems:
+                self.show_info_window("Не все файлы прочитаны:\n\n" + "\n".join(problems))
         else:
-            self.show_info_window("Для чтения из файла неоходимо остановить мониторинг")
+            self.show_info_window("Для чтения из файла необходимо остановить мониторинг")
 
 
     def show_info_window(self, info):
