@@ -4,7 +4,6 @@ import pyqtgraph as pg
 import numpy as np
 import time
 from datetime import datetime, timedelta
-import os
 import json
 import tango
 
@@ -14,7 +13,7 @@ from PyQt5.QtWidgets import QDialog, QVBoxLayout, QGroupBox, QGridLayout, \
     QFileDialog, QMessageBox
 from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtCore import QTimer, QDateTime
-from PyQt5.QtWidgets import QApplication, QWidget, QMessageBox, QVBoxLayout, QPushButton
+from PyQt5.QtWidgets import QWidget, QPushButton
 
 from rfn_app.oapp.mon.rfn_mon_data import RfnMonData, TangoConnError, TangoErr
 from rfn_app.oapp.mon.rfn_mon_plot_dialog import PlotLinesDialog
@@ -44,16 +43,13 @@ class RfnMonWindow(QMainWindow):
         self.dlines = []
         self.curve_keys = []        
         self.file_data = None
-        self.devices =None
-        self.divices_attr = None
-        
-        self.f_name_templ_ds = ""
+        self.devices = None
+        self.devices_attr = None
+
         self.f_name_templ_date = "%Y-%m-%d_%H-%M-%S.dat"
-        self.f_name = ""
         self.f_names = []   # file per resonator, None for inactive ones
         self.active = []    # active[r] = True if resonator r is polled
         self.statusMsg = "Start: "
-        self.state = RfnMonState()
         self.state = RfnMonState.Idle
 
         self.read_cfg(cfg_name_json)
@@ -92,7 +88,7 @@ class RfnMonWindow(QMainWindow):
         gb_plots.setLayout(vbox_plots)
         self.rebuild_lines()
 
-        # создаем строку с указанием резонатора, кнопкой подключения и combobox для выбора резонатора
+        # top row: number of resonators, Mon: Start / Mon: Stop, read from file
         self.lbl_cav_info = QLabel("Резонаторы: ---")
         self.lbl_cav_info.setStyleSheet('''font: 14pt "MS Shell Dlg 2"''')
 
@@ -102,7 +98,7 @@ class RfnMonWindow(QMainWindow):
         self.btn_mon_stop = QPushButton("Mon: Stop")
         self.btn_mon_stop.clicked.connect(self.mon_stop)
 
-        self.btn_read_file = QPushButton("Read form file")
+        self.btn_read_file = QPushButton("Read from file")
         self.btn_read_file.clicked.connect(self.read_file)
 
         hbox_sys = QHBoxLayout()
@@ -474,8 +470,6 @@ class RfnMonWindow(QMainWindow):
 
         return f_dir + f"{res_name}_" + self.start.strftime(self.f_name_templ_date)
 
-        self.f_name = f_dir + f"{self.f_name_templ_ds}_" + self.start.strftime(self.f_name_templ_date)
-
     
     def read_file(self):
         if (self.state == RfnMonState.Idle):
@@ -503,7 +497,7 @@ class RfnMonWindow(QMainWindow):
 
             self.statusBar().showMessage("Read from file {}".format(fname))
         else:
-            self.show_info_window("Для чтения из файла неоходимо остановить мониторинг")
+            self.show_info_window("Для чтения из файла необходимо остановить мониторинг")
 
 
     def show_info_window(self, info):
