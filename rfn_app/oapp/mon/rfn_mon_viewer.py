@@ -230,6 +230,11 @@ class RfnMonWindow(QMainWindow):
             self.dlines[i] = idlines
             self.curve_keys[i] = keys
 
+            # legend: up to 4 entries per column, as at start
+            legend = self.guiplots[i].getPlotItem().legend
+            if legend is not None and hasattr(legend, "setColumnCount"):
+                legend.setColumnCount(max(1, (len(idlines) - 1) // 4 + 1))
+
 
     def edit_plot_lines(self, p):
         """Настройка линий одного графика: p - номер графика"""
@@ -473,29 +478,55 @@ class RfnMonWindow(QMainWindow):
     
     def read_file(self):
         if (self.state == RfnMonState.Idle):
-            fname = QFileDialog.getOpenFileName(self, 'Open file', self.f_dir)[0]
-            if fname == "":
+            # several files can be selected: one per resonator
+            fnames = QFileDialog.getOpenFileNames(self, 'Open files', self.f_dir,
+                                                  "Data files (*.dat);;All files (*)")[0]
+            if not fnames:
                 return
 
-            # резонатор определяем по началу имени файла: "rf2-1e1_2026-10-30_11-07-15.dat"
-            res_name = os.path.basename(fname).split("_")[0]
-            if res_name not in self.res_names:
-                self.show_info_window("Не удалось определить резонатор по имени файла")
+            n_lines = len(self.data_lines_cfg)
+            empty = [[], [[] for _ in range(n_lines)]]
+            file_data = [empty for _ in self.res_names]
+            loaded = {}     # resonator name -> file name
+            problems = []   # list of "file: reason"
+            for fname in fnames:
+                base = os.path.basename(fname)
+                # the resonator is the beginning of the file name: "rf2-1e1_2026-10-30_11-07-15.dat"
+                res_name = base.split("_")[0]
+                if res_name not in self.res_names:
+                    problems.append(f"{base}: не удалось определить резонатор по имени файла")
+                    continue
+                try:
+                    # reading does not depend on the resonator, any data object will do
+                    xt, y = self.datas[0].read_from_file(fname)
+                except (OSError, ValueError, IndexError) as e:
+                    problems.append(f"{base}: не удалось прочитать ({type(e).__name__}: {e})")
+                    continue
+                # a file with fewer columns: the missing lines stay empty
+                while len(y) < n_lines:
+                    y.append([])
+                if res_name in loaded:
+                    problems.append(f"{base}: для {res_name} уже выбран "
+                                    f"{os.path.basename(loaded[res_name])}, берём этот")
+                file_data[self.res_names.index(res_name)] = [xt, y]
+                loaded[res_name] = fname
+
+            if not loaded:
+                self.show_info_window("Ни один файл не прочитан:\n\n" + "\n".join(problems))
                 return
 
-            # чтение файла от резонатора не зависит, подойдёт любой объект данных
-            data_r = self.datas[0].read_from_file(fname)
-
-            # данные есть только у резонатора этого файла, у остальных пусто
-            r = self.res_names.index(res_name)
-            empty = [[], [[] for _ in self.data_lines_cfg]]
-            self.file_data = [data_r if k == r else empty for k in range(len(self.res_names))]
-
+            self.file_data = file_data
             self.redraw_all()
             for i in range(self.plot_qty):
                 self.guiplots[i].enableAutoRange(axis='x', enable=True)
 
-            self.statusBar().showMessage("Read from file {}".format(fname))
+            self.lbl_cav_info.setText(f"Из файлов: {len(loaded)} из {len(self.res_names)}")
+            if len(loaded) == 1:
+                self.statusBar().showMessage("Read from file {}".format(list(loaded.values())[0]))
+            else:
+                self.statusBar().showMessage("Read from {} files".format(len(loaded)))
+            if problems:
+                self.show_info_window("Не все файлы прочитаны:\n\n" + "\n".join(problems))
         else:
             self.show_info_window("Для чтения из файла необходимо остановить мониторинг")
 
