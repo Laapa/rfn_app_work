@@ -3,3 +3,7 @@ venv/
 data/
 *-lines.json
 test-config.json
+*.log
+build/
+dist/
+*.egg-info/

@@ -11,18 +11,69 @@
 | `rfn_app/oapp/mon/rfn_mon_viewer.py` | главное окно `RfnMonWindow` |
 | `rfn_app/oapp/mon/rfn_mon_data.py` | `RfnMonData`: данные одного резонатора |
 | `rfn_app/oapp/mon/rfn_mon_plot_dialog.py` | окно выбора линий одного графика |
-| `RfnMonViewer-config.json` | боевой конфиг |
+| `rfn_app/oapp/mon/launcher.py` | запуск программы отдельно (его вызывает `rfn-mon-viewer.exe`) |
+| `rfn_app/oapp/mon/RfnMonViewer-config.json` | боевой конфиг (лежит внутри пакета) |
+| `pyproject.toml` | описание пакета для `pip`: имя, версия, зависимости, запускатор |
 | `fake_server.py` | фейковый Tango-сервер для стенда (без базы) |
 | `make_test_config.py` | делает `test-config.json` для стенда из боевого конфига |
 | `run_test.py` | запуск окна с `test-config.json` |
+| `run_lab.py` | запуск окна с боевым конфигом из папки проекта |
 | `check_lab.py` | проверка девайсов и атрибутов по конфигу (только чтение) |
 
 Порядок групп в `tango_attr` должен совпадать с порядком девайсов в `devices`:
 группа j читается с девайса j (по позиции, не по имени). Проверяется `check_lab.py`.
 
-## Установка (Windows, cmd)
+## Установка пакетом (для работы)
 
 Нужен Python 3.8 (под pytango 9.3.4 на Windows нет сборок под новее).
+Папка с программой — **без русских букв в пути**, иначе PyQt5 не запустится.
+
+Из папки проекта (pip сам поставит pytango, PyQt5, pyqtgraph, numpy):
+
+```bat
+python -m pip install .
+```
+
+Без интернета (например, в лаборатории): собрать файл пакета на компьютере с интернетом,
+
+```bat
+python -m pip wheel . --no-deps -w dist
+```
+
+перенести `dist\rfn_mon_viewer-0.1.0-py3-none-any.whl` и поставить там.
+Если pytango, PyQt5, pyqtgraph и numpy там уже стоят, интернет не нужен:
+
+```bat
+python -m pip install rfn_mon_viewer-0.1.0-py3-none-any.whl
+```
+
+Обновление — та же команда установки с новой версией.
+
+### Запуск
+
+pip создаёт запускатор `rfn-mon-viewer.exe` в папке `Scripts` того Python, куда ставили.
+Где он лежит:
+
+```bat
+where rfn-mon-viewer
+```
+
+Ярлык на рабочий стол: правой кнопкой по `rfn-mon-viewer.exe` → «Отправить» → «Рабочий стол
+(создать ярлык)». Ярлык можно переименовать в «Монитор ВЧ2».
+
+### Рабочая папка
+
+Установленная программа ничего не пишет в свою папку. Всё лежит в `Документы\RfnMonViewer`
+(создаётся при первом запуске):
+
+- `RfnMonViewer-config.json` — конфиг. При первом запуске копируется из пакета,
+  дальше используется эта копия: её и правьте. Новая версия пакета её не перезаписывает.
+- `data\` — файлы измерений.
+- `RfnMonViewer-config-lines.json` — сохранённый выбор линий.
+- `RfnMonViewer-errors.log` — непредвиденные ошибки. При такой ошибке программа не закрывается,
+  а показывает окно (одна и та же ошибка — один раз).
+
+## Установка для разработки и стенда (Windows, cmd)
 
 ```bat
 py -3.8 -m venv venv
@@ -79,7 +130,7 @@ python check_lab.py
 python check_lab.py --host 10.18.113.66:10000 --timeout 3000
 ```
 
-Без аргумента берётся `RfnMonViewer-config.json`. `TANGO_HOST` берётся из окружения,
+Без аргумента берётся боевой конфиг `rfn_app/oapp/mon/RfnMonViewer-config.json`. `TANGO_HOST` берётся из окружения,
 если не задан, то `10.18.113.66:10000`. Код выхода 0, если замечаний нет, иначе 1.
 
 ## Поведение при отказах
