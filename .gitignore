@@ -2,7 +2,6 @@ __pycache__/
 venv/
 data/
 *-lines.json
-test-config.json
 *.log
 build/
 dist/
