@@ -11,6 +11,7 @@ Examples:
 """
 import argparse
 import json
+import os
 import math
 import random
 import time
@@ -18,7 +19,7 @@ import time
 from tango import Attr, AttrWriteType, DevDouble, DevState
 from tango.server import Device, run
 
-CFG = "RfnMonViewer-config.json"
+CFG = os.path.join("rfn_app", "oapp", "mon", "RfnMonViewer-config.json")
 PORT = 10000
 
 with open(CFG, "r") as f:

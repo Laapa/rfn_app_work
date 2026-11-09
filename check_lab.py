@@ -10,7 +10,7 @@ the order of devices. If attributes are missing on device j but found on another
 device of the same resonator, the order is probably wrong.
 
 Usage:
-    python check_lab.py                          RfnMonViewer-config.json, TANGO_HOST from env
+    python check_lab.py                          the main config from the package, TANGO_HOST from env
     python check_lab.py test-config.json         the test bench config
     python check_lab.py --host 10.18.113.66:10000
     python check_lab.py --timeout 3000
@@ -77,8 +77,8 @@ def print_table(header, rows):
 
 def main():
     parser = argparse.ArgumentParser(description="Проверка Tango-девайсов из конфига (только чтение)")
-    parser.add_argument("config", nargs="?", default="RfnMonViewer-config.json",
-                        help="конфиг (по умолчанию RfnMonViewer-config.json)")
+    parser.add_argument("config", nargs="?", default=os.path.join("rfn_app", "oapp", "mon", "RfnMonViewer-config.json"),
+                        help="конфиг (по умолчанию rfn_app/oapp/mon/RfnMonViewer-config.json)")
     parser.add_argument("--host", default=None,
                         help=f"TANGO_HOST (по умолчанию из окружения или {DEFAULT_TANGO_HOST})")
     parser.add_argument("--timeout", type=int, default=1000, help="таймаут, мс (по умолчанию 1000)")

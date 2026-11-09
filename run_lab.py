@@ -7,6 +7,6 @@ if "TANGO_HOST" not in os.environ:
     os.environ["TANGO_HOST"] = tango_host
 
 app = QApplication(sys.argv)
-w = RfnMonWindow("RfnMonViewer-config.json")
+w = RfnMonWindow(os.path.join("rfn_app", "oapp", "mon", "RfnMonViewer-config.json"))
 w.show()
 sys.exit(app.exec_())

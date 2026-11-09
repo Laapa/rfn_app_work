@@ -1,5 +1,5 @@
 """
-Make test-config.json from RfnMonViewer-config.json for the fake server.
+Make test-config.json from rfn_app/oapp/mon/RfnMonViewer-config.json for the fake server.
 
 Examples:
     python make_test_config.py                        all resonators on localhost:10000
@@ -9,6 +9,7 @@ Examples:
 """
 import argparse
 import json
+import os
 
 parser = argparse.ArgumentParser(description="Тестовый конфиг для фейкового сервера")
 parser.add_argument("--port", type=int, default=10000,
@@ -18,7 +19,7 @@ parser.add_argument("--split", type=int, default=None, metavar="PORT2",
 parser.add_argument("--out", default="test-config.json", help="имя файла результата")
 args = parser.parse_args()
 
-with open("RfnMonViewer-config.json", "r") as f:
+with open(os.path.join("rfn_app", "oapp", "mon", "RfnMonViewer-config.json"), "r") as f:
     cfg = json.load(f)
 
 names = list(cfg["devices"].keys())
