@@ -20,12 +20,13 @@ from rfn_app.oapp.mon.rfn_mon_plot_dialog import PlotLinesDialog
 
 tango_host = "10.18.113.66:10000"
 
-# стиль линии по порядку на графике: сплошная, штрих, точки, штрих-точка, штрих-две точки
+# стиль линии по порядку на графике: сплошная, штрих, точки, штрих-точка, штрих-две точки (может быть не видно)
 LINE_STYLES = [Qt.SolidLine, Qt.DashLine, Qt.DotLine, Qt.DashDotLine, Qt.DashDotDotLine]
-# цвет кривых по резонатору (яркие, под чёрный фон графиков)
+# цвет кривых по номеру резонатора
 RES_COLORS = ["#4da6ff", "#ff9933", "#66dd66", "#ff5555",
               "#bb88ff", "#ffee55", "#ff77cc", "#44ddcc"]
 
+#просто два имени состояний мониторинга
 class RfnMonState(object):
     Idle = 0
     Mon = 1
@@ -47,8 +48,8 @@ class RfnMonWindow(QMainWindow):
         self.devices_attr = None
 
         self.f_name_templ_date = "%Y-%m-%d_%H-%M-%S.dat"
-        self.f_names = []   # file per resonator, None for inactive ones
-        self.active = []    # active[r] = True if resonator r is polled
+        self.f_names = []   
+        self.active = []    
         self.statusMsg = "Start: "
         self.state = RfnMonState.Idle
 
@@ -88,7 +89,7 @@ class RfnMonWindow(QMainWindow):
         gb_plots.setLayout(vbox_plots)
         self.rebuild_lines()
 
-        # top row: number of resonators, Mon: Start / Mon: Stop, read from file
+        # по сути это верхняя строка с показанием резонатаоров, кнопками начала измерений и конца.
         self.lbl_cav_info = QLabel("Резонаторы: ---")
         self.lbl_cav_info.setStyleSheet('''font: 14pt "MS Shell Dlg 2"''')
 
@@ -107,7 +108,7 @@ class RfnMonWindow(QMainWindow):
         hbox_sys.addWidget(self.btn_mon_stop)
         hbox_sys.addWidget(self.btn_read_file)
 
-        # создаем главное окно
+        # так, ну теперь создаем главное окно
         container = QWidget()
 
         vbox = QVBoxLayout(container)
@@ -118,8 +119,8 @@ class RfnMonWindow(QMainWindow):
         self.setWindowTitle("Монитор ВЧ2")
         self.statusBar().showMessage('Ready')
 
-        # Создаем класс с данными и таймер для получения данных и отрисовки              
-        # по одному объекту данных на каждый резонатор, в том же порядке, что в json
+        # теперь создаем оздаем класс с данными и таймер для получения данных и отрисовки              
+        # по одному объекту данных на каждый резонатор, в том же порядке, что в jsonчике
         self.datas = [RfnMonData(self.x_len, self.devices_attr) for _ in self.res_names]
 
         self.timer = QTimer()  
@@ -265,9 +266,7 @@ class RfnMonWindow(QMainWindow):
 
 
     def timerEvent(self):
-        # poll only active resonators; inactive ones keep empty buffers.
-        # A failure of one resonator must not stop the others.
-        lost_now = []   # list of (resonator name, short reason) lost in this tick
+        lost_now = []   
         for r, data in enumerate(self.datas):
             if not self.active[r]:
                 continue
@@ -292,11 +291,11 @@ class RfnMonWindow(QMainWindow):
 
     def drop_partial_sample(self, data):
         """
-        Undo the half-written sample after get_data() failed in the middle.
+        Отменяем недописанный отсчёт после сбоя get_data() посередине опроса.
 
-        get_data() appends the time to xt first and then appends values to y
-        one by one (y[0], y[1], ...). data.dump holds [time, values read so far],
-        so len(dump) - 1 is how many y lists got a new value before the failure.
+        get_data() сначала добавляет время в xt, а потом по одному добавляет значения в y
+        (y[0], y[1], ...). В data.dump лежит [время, значения, прочитанные до сбоя],
+        поэтому len(dump) - 1 это число списков y, в которые успело попасть новое значение.
         """
         n_read = max(len(data.dump) - 1, 0)
         if data.xt:
@@ -313,14 +312,14 @@ class RfnMonWindow(QMainWindow):
 
 
     def error_text(self, e):
-        """Readable text of an exception; for Tango errors join the descriptions"""
+        """Читаемый текст исключения; для ошибок Tango склеиваем описания"""
         if isinstance(e, tango.DevFailed):
             return "\n".join(err.desc for err in e.args)
         return f"{type(e).__name__}: {e}"
 
 
     def on_resonators_lost(self, lost_now):
-        """Resonators stopped answering during monitoring: update label, warn once"""
+        """Резонаторы перестали отвечать во время мониторинга: обновляем надпись, предупреждаем один раз"""
         n_ok = sum(self.active)
         n_all = len(self.res_names)
         lost_text = "\n".join(f"{name}: {reason}" for name, reason in lost_now)
@@ -341,10 +340,10 @@ class RfnMonWindow(QMainWindow):
 
 
     def show_warning(self, text):
-        """Non-modal warning: the timer keeps working while the window is open"""
+        """Предупреждение без блокировки: таймер продолжает работать, пока окно открыто"""
         msg_box = QMessageBox(self)
         msg_box.setIcon(QMessageBox.Warning)
-        msg_box.setWindowTitle("Warning")
+        msg_box.setWindowTitle("Предупреждение")
         msg_box.setText(text)
         msg_box.setStandardButtons(QMessageBox.Ok)
         msg_box.setAttribute(Qt.WA_DeleteOnClose)
@@ -389,9 +388,9 @@ class RfnMonWindow(QMainWindow):
 
     def mon_start(self):
         if (self.state == RfnMonState.Idle):
-            # try every resonator; a failed one is remembered, not fatal
+            # пробуем подключить каждый резонатор; сбойный запоминаем, это не фатально
             self.active = []
-            failed = []     # list of (resonator name, short reason)
+            failed = []     # список (имя резонатора, короткая причина)
             for name, data in zip(self.res_names, self.datas):
                 try:
                     data.connect(self.devices[name])
@@ -441,8 +440,8 @@ class RfnMonWindow(QMainWindow):
 
 
     def short_reason(self, msg):
-        """Short reason from a Tango error text: prefer the line naming the device
-        ("Failed to connect to device rf2/1e1/mod"), otherwise the first line"""
+        """Короткая причина из текста ошибки Tango: берём строку с названием девайса
+        ("Failed to connect to device rf2/1e1/mod"), иначе первую строку"""
         lines = [line.strip() for line in msg.splitlines() if line.strip()]
         if not lines:
             return "нет ответа"
@@ -459,7 +458,7 @@ class RfnMonWindow(QMainWindow):
     def mon_stop(self):
         if (self.state == RfnMonState.Mon):
             self.timer.stop()
-            self.statusBar().showMessage("Monitor stop.")
+            self.statusBar().showMessage("Мониторинг остановлен")
             self.state = RfnMonState.Idle
             self.lbl_cav_info.setText(f"Резонаторы: ---")
         else:
@@ -479,7 +478,7 @@ class RfnMonWindow(QMainWindow):
     def read_file(self):
         if (self.state == RfnMonState.Idle):
             # several files can be selected: one per resonator
-            fnames = QFileDialog.getOpenFileNames(self, 'Open files', self.f_dir,
+            fnames = QFileDialog.getOpenFileNames(self, 'Открыть файлы', self.f_dir,
                                                   "Data files (*.dat);;All files (*)")[0]
             if not fnames:
                 return
