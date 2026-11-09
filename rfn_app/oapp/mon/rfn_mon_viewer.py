@@ -15,7 +15,7 @@ from PyQt5.QtWidgets import QDialog, QVBoxLayout, QGroupBox, QGridLayout, \
     QFileDialog, QMessageBox
 from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtCore import QTimer, QDateTime
-from PyQt5.QtWidgets import QWidget, QPushButton
+from PyQt5.QtWidgets import QWidget, QPushButton, QDockWidget
 
 from rfn_app.oapp.mon.rfn_mon_data import RfnMonData, TangoConnError, TangoErr
 from rfn_app.oapp.mon.rfn_mon_plot_dialog import PlotLinesDialog
@@ -109,6 +109,14 @@ class RfnMonWindow(QMainWindow):
         hbox_sys.addWidget(self.btn_mon_stop)
         hbox_sys.addWidget(self.btn_read_file)
 
+        # Python console at the bottom of the window, hidden until the button is pressed
+        self.console_dock = None
+        self.btn_console = QPushButton("Консоль")
+        self.btn_console.setCheckable(True)
+        self.btn_console.setToolTip("Консоль Python для просмотра данных")
+        self.btn_console.toggled.connect(self.toggle_console)
+        hbox_sys.addWidget(self.btn_console)
+
         # создаем главное окно
         container = QWidget()
 
@@ -126,6 +134,30 @@ class RfnMonWindow(QMainWindow):
 
         self.timer = QTimer()  
         self.timer.timeout.connect(self.timerEvent)
+
+    def toggle_console(self, show):
+        """Show or hide the Python console; it is created on the first press"""
+        if self.console_dock is None:
+            # imported here, so a problem with the console does not stop the program
+            from pyqtgraph.console import ConsoleWidget
+
+            # names available in the console
+            namespace = {"win": self, "datas": self.datas, "res_names": self.res_names,
+                         "np": np, "pg": pg}
+            text = ("Консоль Python. Команды выполняются сразу, пока работает монитор.\n"
+                    "  win        - главное окно\n"
+                    "  datas[r]   - данные резонатора r: datas[r].xt (время), datas[r].y[n] (линия n)\n"
+                    "  res_names  - имена резонаторов по номеру r\n"
+                    "Пример: datas[0].y[0][-5:]   (последние 5 значений Ucav первого резонатора)\n"
+                    "ВНИМАНИЕ: здесь можно выполнить любой код. Ничего не записывайте в оборудование.\n")
+            self.console_dock = QDockWidget("Консоль", self)
+            self.console_dock.setWidget(ConsoleWidget(namespace=namespace, text=text))
+            self.addDockWidget(Qt.BottomDockWidgetArea, self.console_dock)
+            # closing the console with its own [x] also releases the button
+            self.console_dock.visibilityChanged.connect(self.btn_console.setChecked)
+
+        self.console_dock.setVisible(show)
+
 
     def read_cfg(self, config_file):
         with open(config_file, 'r') as file:
