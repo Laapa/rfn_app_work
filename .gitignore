@@ -3,4 +3,3 @@ venv/
 data/
 *-lines.json
 test-config.json
-*.log

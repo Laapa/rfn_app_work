@@ -1,7 +1,5 @@
 import os
 import sys
-import argparse
-import traceback
 import pyqtgraph as pg
 import numpy as np
 import time
@@ -551,84 +549,14 @@ class RfnMonWindow(QMainWindow):
         msg_box.setStandardButtons(QMessageBox.Ok)
         msg_box.exec_()        
 
-# config file name used when none is given on the command line
-DEFAULT_CONFIG = "RfnMonViewer-config.json"
-# project folder: rfn_app/oapp/mon/rfn_mon_viewer.py -> three levels up
-PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-
-
-def find_config(name):
-    """Config path: as given, else in the current folder, else in the project folder"""
-    if name:
-        return os.path.abspath(name)
-    for folder in (os.getcwd(), PROJECT_DIR):
-        path = os.path.join(folder, DEFAULT_CONFIG)
-        if os.path.exists(path):
-            return path
-    return None
-
-
-def install_error_handler(log_name):
-    """
-    Unexpected errors: write them to a log file and show a message once,
-    instead of closing the program. Used only for the standalone start
-    (main), the bigger window that imports RfnMonWindow is not affected.
-    """
-    seen = set()
-
-    def handler(exc_type, exc, tb):
-        if issubclass(exc_type, KeyboardInterrupt):
-            sys.__excepthook__(exc_type, exc, tb)
-            return
-        text = "".join(traceback.format_exception(exc_type, exc, tb))
-        if text in seen:        # the same error every second: report it once
-            return
-        seen.add(text)
-        try:
-            with open(log_name, "a", encoding="utf-8") as f:
-                f.write(f"--- {datetime.now():%Y-%m-%d %H:%M:%S}\n{text}\n")
-        except OSError:
-            pass
-        if sys.stderr is not None:      # pythonw has no console
-            sys.stderr.write(text)
-        QMessageBox.critical(None, "Ошибка программы",
-                             f"{exc_type.__name__}: {exc}\n\nПрограмма продолжает работу.\n"
-                             f"Подробности записаны в файл:\n{log_name}")
-
-    sys.excepthook = handler
-
-
 def main():
-    """Standalone start: python -m rfn_app.oapp.mon.rfn_mon_viewer [config] [--tango-host HOST]"""
-    parser = argparse.ArgumentParser(description="Монитор ВЧ2")
-    parser.add_argument("config", nargs="?", default=None,
-                        help=f"конфиг (по умолчанию {DEFAULT_CONFIG} в текущей папке или в папке программы)")
-    parser.add_argument("--tango-host", default=None,
-                        help=f"TANGO_HOST (по умолчанию из окружения или {tango_host})")
-    args = parser.parse_args()
-
-    if args.tango_host:
-        os.environ["TANGO_HOST"] = args.tango_host
-    elif "TANGO_HOST" not in os.environ:
+    if "TANGO_HOST" not in os.environ:
         os.environ["TANGO_HOST"] = tango_host
 
-    app = QApplication(sys.argv)
-
-    config = find_config(args.config)
-    if config is None or not os.path.exists(config):
-        QMessageBox.critical(None, "Монитор ВЧ2",
-                             f"Не найден файл конфигурации:\n{config or DEFAULT_CONFIG}")
-        sys.exit(1)
-
-    # work next to the config: the "data/" folder and the log go there,
-    # whatever folder the program was started from (e.g. from a shortcut)
-    os.chdir(os.path.dirname(config))
-    install_error_handler(os.path.join(os.path.dirname(config), "RfnMonViewer-errors.log"))
-
-    w = RfnMonWindow(config)
+    app = QApplication(sys.argv)  
+    w = RfnMonWindow()
     w.show()
     sys.exit(app.exec_())
-
 
 if __name__ == '__main__':
     main()
