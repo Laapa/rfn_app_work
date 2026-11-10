@@ -8,13 +8,12 @@
 
 | Файл | Что это |
 |---|---|
-| `rfn_app/oapp/mon/rfn_mon_viewer.py` | главное окно `RfnMonWindow` |
-| `rfn_app/oapp/mon/rfn_mon_data.py` | `RfnMonData`: данные одного резонатора |
-| `rfn_app/oapp/mon/rfn_mon_plot_dialog.py` | окно выбора линий одного графика |
+| `rfn_mon/rfn_mon_viewer.py` | главное окно `RfnMonWindow` |
+| `rfn_mon/rfn_mon_data.py` | `RfnMonData`: данные одного резонатора |
+| `rfn_mon/rfn_mon_plot_dialog.py` | окно выбора линий одного графика |
 | `RfnMonViewer-config.json` | боевой конфиг |
 | `fake_server.py` | фейковый Tango-сервер для стенда (без базы) |
 | `make_test_config.py` | делает `test-config.json` для стенда из боевого конфига |
-| `run_test.py` | запуск окна с `test-config.json` |
 | `check_lab.py` | проверка девайсов и атрибутов по конфигу (только чтение) |
 
 Порядок групп в `tango_attr` должен совпадать с порядком девайсов в `devices`:

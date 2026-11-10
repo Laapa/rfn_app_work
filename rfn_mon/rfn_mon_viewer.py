@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timedelta
 import json
 import tango
+import argparse
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QGroupBox, QGridLayout, \
@@ -15,8 +16,8 @@ from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtCore import QTimer, QDateTime
 from PyQt5.QtWidgets import QWidget, QPushButton
 
-from rfn_app.oapp.mon.rfn_mon_data import RfnMonData, TangoConnError, TangoErr
-from rfn_app.oapp.mon.rfn_mon_plot_dialog import PlotLinesDialog
+from .rfn_mon_data import RfnMonData, TangoConnError, TangoErr
+from .rfn_mon_plot_dialog import PlotLinesDialog
 
 tango_host = "10.18.113.66:10000"
 
@@ -548,12 +549,27 @@ class RfnMonWindow(QMainWindow):
         msg_box.setStandardButtons(QMessageBox.Ok)
         msg_box.exec_()        
 
-def main():
-    if "TANGO_HOST" not in os.environ:
+
+DEFAULT_CONFIG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "RfnMonViewer-config.json")
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Монитор ВЧ2 (?правильно нет?): мониторинг резонаторов через Tango")
+    parser.add_argument("--config", default=None,
+                        help="файл конфигурации (по умолчанию RfnMonViewer-config.json в текущей папке)")
+    parser.add_argument("--tango-host", default=None,
+                        help="адрес какой-то базы Tango, например 10.18.113.66:10000")
+    args = parser.parse_args(argv)
+
+    if args.tango_host:
+        os.environ["TANGO_HOST"] = args.tango_host
+    elif "TANGO_HOST" not in os.environ:
         os.environ["TANGO_HOST"] = tango_host
 
-    app = QApplication(sys.argv)  
-    w = RfnMonWindow()
+    config = os.path.abspath(args.config) if args.config else DEFAULT_CONFIG
+    if not os.path.isfile(config):
+        sys.exit(f"Не найден файл конфигурации: {config}\nУкажите путь: rfn-mon --config ПУТЬ")
+
+    app = QApplication(sys.argv[:1])
+    w = RfnMonWindow(config)
     w.show()
     sys.exit(app.exec_())
 
