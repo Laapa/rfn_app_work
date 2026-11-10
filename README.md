@@ -29,6 +29,25 @@ venv\Scripts\activate
 pip install pytango==9.3.4 PyQt5 pyqtgraph "numpy<1.24"
 ```
 
+## Запуск
+
+После `pip install .` из папки проекта:
+
+```bat
+rfn-mon
+rfn-mon --data-dir D:\Измерения\2026-11
+rfn-mon --config C:\path\my-config.json --tango-host 10.18.113.66:10000
+rfn-mon --help
+```
+
+| Параметр | Что задаёт | По умолчанию |
+|---|---|---|
+| `--config` | файл конфигурации | `RfnMonViewer-config.json` внутри пакета |
+| `--tango-host` | адрес базы Tango | переменная `TANGO_HOST`, иначе `10.18.113.66:10000` |
+| `--data-dir` | папка для файлов измерений (создаётся сама) | `"dir"` из конфига, относительно папки запуска |
+
+Путь с пробелами — в кавычках, без `\` в конце: `--data-dir "D:\Мои измерения"`.
+
 ## Стенд
 
 Каждую команду запускать в своём окне cmd из папки проекта, с `venv\Scripts\activate`.

@@ -34,7 +34,7 @@ class RfnMonState(object):
 
 
 class RfnMonWindow(QMainWindow):
-    def __init__(self, cfg_name_json, parent = None):
+    def __init__(self, cfg_name_json, parent = None, data_dir = None):
         super(RfnMonWindow, self).__init__(parent)
         self.setAttribute(Qt.WA_DeleteOnClose)  
 
@@ -55,6 +55,9 @@ class RfnMonWindow(QMainWindow):
         self.state = RfnMonState.Idle
 
         self.read_cfg(cfg_name_json)
+        # folder for the measurement files: from the command line if given, else "dir" from the config
+        if data_dir:
+            self.f_dir = data_dir
 
         # создаем требуемое количество графиков (PlotWidget)
         for i in range(self.plot_qty):
@@ -557,6 +560,8 @@ def main(argv=None):
                         help="файл конфигурации (по умолчанию RfnMonViewer-config.json в текущей папке)")
     parser.add_argument("--tango-host", default=None,
                         help="адрес какой-то базы Tango, например 10.18.113.66:10000")
+    parser.add_argument("--data-dir", default=None,
+                        help="папка для файлов измерений (по умолчанию \"dir\" из конфига)")
     args = parser.parse_args(argv)
 
     if args.tango_host:
@@ -568,8 +573,11 @@ def main(argv=None):
     if not os.path.isfile(config):
         sys.exit(f"Не найден файл конфигурации: {config}\nУкажите путь: rfn-mon --config ПУТЬ")
 
+    # full path, so the folder does not depend on where the program was started from
+    data_dir = os.path.abspath(args.data_dir) if args.data_dir else None
+
     app = QApplication(sys.argv[:1])
-    w = RfnMonWindow(config)
+    w = RfnMonWindow(config, data_dir=data_dir)
     w.show()
     sys.exit(app.exec_())
 
