@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rfn-mon"
+version = "0.1.0"
+description = "Монитор ВЧ2: мониторинг резонаторов через Tango"
+requires-python = ">=3.8"
+dependencies = [
+    "PyQt5",
+    "pyqtgraph",
+    "numpy<1.24",
+    "pytango==9.3.4",
+]
+
+[project.scripts]
+rfn-mon = "rfn_mon.rfn_mon_viewer:main"
+
+[tool.setuptools]
+packages = ["rfn_mon"]
+
+[tool.setuptools.package-data]
+rfn_mon = ["RfnMonViewer-config.json"]
