@@ -554,6 +554,48 @@ class RfnMonWindow(QMainWindow):
 
 
 DEFAULT_CONFIG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "RfnMonViewer-config.json")
+
+
+def data_dir_file(config):
+    """File next to the config that remembers the last --data-dir: <config>-datadir.json"""
+    return os.path.splitext(config)[0] + "-datadir.json"
+
+
+def save_data_dir(config, path):
+    """Remember the folder for the next start; a failure only means it is not remembered"""
+    try:
+        with open(data_dir_file(config), "w", encoding="utf-8") as f:
+            json.dump({"data_dir": path}, f, ensure_ascii=False)
+    except OSError as e:
+        print(f"Не удалось запомнить папку измерений: {e}", file=sys.stderr)
+
+
+def load_data_dir(config):
+    """Folder remembered at an earlier start, or None (then "dir" from the config is used)"""
+    try:
+        with open(data_dir_file(config), "r", encoding="utf-8") as f:
+            path = json.load(f).get("data_dir")
+    except (OSError, ValueError, AttributeError):
+        return None         # nothing remembered yet, or the file is damaged
+    if not isinstance(path, str) or not path:
+        return None
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError:
+        # e.g. the remembered drive is not connected now
+        print(f"Папка измерений недоступна, используется папка из конфига: {path}", file=sys.stderr)
+        return None
+    return path
+
+
+def forget_data_dir(config):
+    """Delete the remembered folder: "dir" from the config is used again"""
+    try:
+        os.remove(data_dir_file(config))
+    except OSError:
+        pass
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Монитор ВЧ2 (?правильно нет?): мониторинг резонаторов через Tango")
     parser.add_argument("--config", default=None,
@@ -561,7 +603,10 @@ def main(argv=None):
     parser.add_argument("--tango-host", default=None,
                         help="адрес какой-то базы Tango, например 10.18.113.66:10000")
     parser.add_argument("--data-dir", default=None,
-                        help="папка для файлов измерений (по умолчанию \"dir\" из конфига)")
+                        help="папка для файлов измерений; запоминается для следующих запусков "
+                             "(по умолчанию \"dir\" из конфига)")
+    parser.add_argument("--reset-data-dir", action="store_true",
+                        help="забыть запомненную папку и снова писать в \"dir\" из конфига")
     args = parser.parse_args(argv)
 
     if args.tango_host:
@@ -573,12 +618,21 @@ def main(argv=None):
     if not os.path.isfile(config):
         sys.exit(f"Не найден файл конфигурации: {config}\nУкажите путь: rfn-mon --config ПУТЬ")
 
-    # full path, so the folder does not depend on where the program was started from
-    data_dir = os.path.abspath(args.data_dir) if args.data_dir else None
+    # folder for the measurement files: given now (and remembered), or remembered earlier
+    if args.reset_data_dir:
+        forget_data_dir(config)
+    if args.data_dir:
+        # full path, so the folder does not depend on where the program was started from
+        data_dir = os.path.abspath(args.data_dir)
+        save_data_dir(config, data_dir)
+    else:
+        data_dir = load_data_dir(config)
 
     app = QApplication(sys.argv[:1])
     w = RfnMonWindow(config, data_dir=data_dir)
     w.show()
+    # show where the files will go, the folder is now remembered between starts
+    w.statusBar().showMessage(f"Ready. Папка измерений: {os.path.abspath(w.f_dir)}")
     sys.exit(app.exec_())
 
 if __name__ == '__main__':

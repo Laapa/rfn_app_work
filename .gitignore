@@ -2,6 +2,7 @@ __pycache__/
 venv/
 data/
 *-lines.json
+*-datadir.json
 test-config.json
 *.egg-info/
 build/
